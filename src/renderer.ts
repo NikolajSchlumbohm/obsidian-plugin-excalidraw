@@ -24,7 +24,6 @@ export interface ResolvedEmbed {
   html: string;
   href: string;
 }
-
 export interface EmbedOverlay {
   id: string;
   x: number;
@@ -33,9 +32,9 @@ export interface EmbedOverlay {
   height: number;
   link: string;
   isWikilink: boolean;
+  isEmbeddable: boolean; // NEW: true only for embeddable/iframe elements
   resolved?: ResolvedEmbed;
 }
-
 export interface RenderResult {
   svg: string;
   overlays: EmbedOverlay[];
@@ -71,10 +70,12 @@ export function renderToSvg(
   const bgColor = resolveBgColor(data, opts);
 
 const overlays: EmbedOverlay[] = [];
-const linkedElements = elements.filter((el) => typeof el.link === "string" && el.link.length > 0);
-for (const el of linkedElements) {
-  const link = el.link as string;
-  const isWikilink = link.startsWith("[[");
+for (const el of elements) {
+  const isEmbeddableType = el.type === "embeddable" || el.type === "iframe";
+  const hasLink = typeof el.link === "string" && el.link.length > 0;
+  if (!isEmbeddableType && !hasLink) continue;
+
+  const link = (el.link as string) ?? "";
   overlays.push({
     id: el.id,
     x: el.x,
@@ -82,7 +83,8 @@ for (const el of linkedElements) {
     width: el.width,
     height: el.height,
     link,
-    isWikilink,
+    isWikilink: link.startsWith("[["),
+    isEmbeddable: isEmbeddableType,
     resolved: ctx?.resolvedEmbeds?.[el.id],
   });
 }
