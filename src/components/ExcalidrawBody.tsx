@@ -131,7 +131,6 @@ function renderOverlay(overlay: EmbedOverlay, linkHrefs: Record<string, string>)
     const href = linkHrefs[overlay.id] ?? overlay.link;
     const isExternal = !overlay.isWikilink;
     return (
-      
         href={href}
         class="excalidraw-overlay excalidraw-link-region"
         data-overlay-id={overlay.id}
@@ -152,7 +151,25 @@ function renderOverlay(overlay: EmbedOverlay, linkHrefs: Record<string, string>)
     .replace(/^https?:\/\//, "");
   const truncatedLabel = label.length > 50 ? label.slice(0, 47) + "..." : label;
   // ...rest of your original function body...
-}
+  if (overlay.isWikilink) {
+    const noteContent = overlay.resolved
+      ? `<a href="${overlay.resolved.href}" class="excalidraw-embed-open-link">Open note →</a><div class="excalidraw-embed-body">${overlay.resolved.html}</div>`
+      : `<span class="excalidraw-embed-missing">Note not found</span>`;
+
+    return (
+      <div
+        class="excalidraw-overlay excalidraw-embed-note"
+        data-overlay-id={overlay.id}
+        data-x={overlay.x}
+        data-y={overlay.y}
+        data-w={overlay.width}
+        data-h={overlay.height}
+      >
+        <div class="excalidraw-embed-header">{"📄 " + truncatedLabel}</div>
+        <div class="excalidraw-embed-content" dangerouslySetInnerHTML={{ __html: noteContent }} />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -178,7 +195,6 @@ function renderOverlay(overlay: EmbedOverlay, linkHrefs: Record<string, string>)
     </div>
   );
 }
-
 export default ((userOpts?: ExcalidrawPageOptions) => {
   const Component: QuartzComponent = (props: QuartzComponentProps) => {
     const { fileData, allFiles } = props;
