@@ -70,23 +70,22 @@ export function renderToSvg(
 
   const bgColor = resolveBgColor(data, opts);
 
-  const overlays: EmbedOverlay[] = [];
-  const embeddables = elements.filter((el) => el.type === "embeddable" || el.type === "iframe");
-  for (const el of embeddables) {
-    const link = (el.link as string) ?? "";
-    const isWikilink = link.startsWith("[[");
-    overlays.push({
-      id: el.id,
-      x: el.x,
-      y: el.y,
-      width: el.width,
-      height: el.height,
-      link,
-      isWikilink,
-      resolved: ctx?.resolvedEmbeds?.[el.id],
-    });
-  }
-
+const overlays: EmbedOverlay[] = [];
+const linkedElements = elements.filter((el) => typeof el.link === "string" && el.link.length > 0);
+for (const el of linkedElements) {
+  const link = el.link as string;
+  const isWikilink = link.startsWith("[[");
+  overlays.push({
+    id: el.id,
+    x: el.x,
+    y: el.y,
+    width: el.width,
+    height: el.height,
+    link,
+    isWikilink,
+    resolved: ctx?.resolvedEmbeds?.[el.id],
+  });
+}
   const renderedElements = elements.map((el) => renderElement(el, data, ctx)).filter(Boolean);
 
   const parts = [
