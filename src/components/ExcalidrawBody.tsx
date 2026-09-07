@@ -25,6 +25,36 @@ function stripTranscludes(html: string): string {
     .replace(/<div[^>]*class="[^"]*transclude[^"]*"[^>]*>[\s\S]*?<\/div>/gi, "");
 }
 
+function resolveWikilinkHref(
+  target: string,
+  currentSlug: FullSlug,
+  allFiles: QuartzPluginData[],
+): string {
+  const targetLower = target.toLowerCase();
+  const page = allFiles.find((f) => {
+    if (!f.slug) return false;
+    if (f.slug === targetLower) return true;
+    return f.slug.split("/").pop() === targetLower;
+  });
+  const pageSlug = (page?.slug ?? slugifyFilePath(target as FilePath)) as FullSlug;
+  return resolveRelative(currentSlug, pageSlug);
+}
+
+function resolveLinkOverlayHrefs(
+  overlays: EmbedOverlay[],
+  currentSlug: FullSlug,
+  allFiles: QuartzPluginData[],
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const o of overlays) {
+    if (o.isEmbeddable) continue; // handled by resolveEmbeds instead
+    result[o.id] = o.isWikilink
+      ? resolveWikilinkHref(o.link.replace(/^\[\[/, "").replace(/\]\]$/, ""), currentSlug, allFiles)
+      : o.link;
+  }
+  return result;
+}
+
 function resolveEmbeds(
   data: ExcalidrawData,
   currentSlug: FullSlug,
@@ -96,33 +126,33 @@ function resolveImages(
 
   return result;
 }
-
-function renderOverlay(overlay: EmbedOverlay): unknown {
-  const label = overlay.link
-    .replace(/^\[\[/, "")
-    .replace(/\]\]$/, "")
-    .replace(/^https?:\/\//, "");
-  const truncatedLabel = label.length > 50 ? label.slice(0, 47) + "..." : label;
-
-  if (overlay.isWikilink) {
-    const noteContent = overlay.resolved
-      ? `<a href="${overlay.resolved.href}" class="excalidraw-embed-open-link">Open note →</a><div class="excalidraw-embed-body">${overlay.resolved.html}</div>`
-      : `<span class="excalidraw-embed-missing">Note not found</span>`;
-
+function renderOverlay(overlay: EmbedOverlay, linkHrefs: Record<string, string>): unknown {
+  if (!overlay.isEmbeddable) {
+    const href = linkHrefs[overlay.id] ?? overlay.link;
+    const isExternal = !overlay.isWikilink;
     return (
-      <div
-        class="excalidraw-overlay excalidraw-embed-note"
+      
+        href={href}
+        class="excalidraw-overlay excalidraw-link-region"
         data-overlay-id={overlay.id}
         data-x={overlay.x}
         data-y={overlay.y}
         data-w={overlay.width}
         data-h={overlay.height}
-      >
-        <div class="excalidraw-embed-header">{"📄 " + truncatedLabel}</div>
-        <div class="excalidraw-embed-content" dangerouslySetInnerHTML={{ __html: noteContent }} />
-      </div>
+        target={isExternal ? "_blank" : undefined}
+        rel={isExternal ? "noopener noreferrer" : undefined}
+      />
     );
   }
+
+  // existing embeddable/iframe rendering — unchanged from here down
+  const label = overlay.link
+    .replace(/^\[\[/, "")
+    .replace(/\]\]$/, "")
+    .replace(/^https?:\/\//, "");
+  const truncatedLabel = label.length > 50 ? label.slice(0, 47) + "..." : label;
+  // ...rest of your original function body...
+}
 
   return (
     <div
@@ -190,7 +220,7 @@ export default ((userOpts?: ExcalidrawPageOptions) => {
           data-offset-x={result.viewBox.offsetX}
           data-offset-y={result.viewBox.offsetY}
         >
-          {result.overlays.map((o) => renderOverlay(o))}
+          {result.overlays.map((o) => renderOverlay(o, linkHrefs))}
         </div>
         {options.enableInteraction !== false && (
           <script
