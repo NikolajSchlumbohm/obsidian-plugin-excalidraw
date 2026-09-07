@@ -41,21 +41,28 @@ export function parseExcalidrawMd(content: string): ExcalidrawData | null {
   if (data.type !== "excalidraw") return null;
 
   const embeddedFiles = parseEmbeddedFilesSection(content);
+  const elementLinks = parseElementLinksSection(content);
   const normalized = normalizeData(data);
   if (!normalized) return null;
 
   if (Object.keys(embeddedFiles).length > 0) {
     normalized.embeddedFiles = embeddedFiles;
   }
-  // NEW: apply links from the Element Links section onto their elements,
-  // without clobbering a link already present in the JSON itself.
+
+  // Obsidian's Excalidraw plugin records links for regular (non-embeddable)
+  // elements in a plain-text "## Element Links" section rather than inline
+  // on the element's JSON. Merge them onto their matching elements so the
+  // renderer can pick them up via `el.link`, same as it already does for
+  // embeddable/iframe elements. Never overwrite a link already present in
+  // the JSON itself.
   if (Object.keys(elementLinks).length > 0) {
     for (const el of normalized.elements) {
       if (!el.link && elementLinks[el.id]) {
-        el.link = elementLinks[el.id];   // keep "[[Note]]" form to match isWikilink check
+        el.link = elementLinks[el.id];
       }
     }
   }
+
   return normalized;
 }
 
@@ -146,6 +153,14 @@ function parseEmbeddedFilesSection(content: string): Record<string, string> {
   return result;
 }
 
+// Parses the "## Element Links" section that Obsidian's Excalidraw plugin
+// writes for links attached to regular elements (e.g. an image with a
+// right-click "Add link" / element link set). Format is the same shape as
+// the Embedded Files section, but element IDs are alphanumeric (not hex),
+// e.g.:
+//   ## Element Links
+//   4NIrGs26: [[Belan]]
+//   ueR5JOID: [[Rhudan]]
 function parseElementLinksSection(content: string): Record<string, string> {
   const result: Record<string, string> = {};
   const sectionMatch = content.match(/^##?\s+Element\s+Links\s*$/im);

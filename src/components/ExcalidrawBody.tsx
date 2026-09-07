@@ -25,34 +25,25 @@ function stripTranscludes(html: string): string {
     .replace(/<div[^>]*class="[^"]*transclude[^"]*"[^>]*>[\s\S]*?<\/div>/gi, "");
 }
 
+// Resolves an Obsidian wikilink target ("Note Name") to a page-relative href.
+// Shared by the rich note-preview embeds (embeddable/iframe elements) and
+// the plain clickable link overlays (any other element carrying a link).
 function resolveWikilinkHref(
   target: string,
   currentSlug: FullSlug,
   allFiles: QuartzPluginData[],
 ): string {
   const targetLower = target.toLowerCase();
+
   const page = allFiles.find((f) => {
     if (!f.slug) return false;
     if (f.slug === targetLower) return true;
-    return f.slug.split("/").pop() === targetLower;
+    const lastSegment = f.slug.split("/").pop();
+    return lastSegment === targetLower;
   });
+
   const pageSlug = (page?.slug ?? slugifyFilePath(target as FilePath)) as FullSlug;
   return resolveRelative(currentSlug, pageSlug);
-}
-
-function resolveLinkOverlayHrefs(
-  overlays: EmbedOverlay[],
-  currentSlug: FullSlug,
-  allFiles: QuartzPluginData[],
-): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const o of overlays) {
-    if (o.isEmbeddable) continue; // handled by resolveEmbeds instead
-    result[o.id] = o.isWikilink
-      ? resolveWikilinkHref(o.link.replace(/^\[\[/, "").replace(/\]\]$/, ""), currentSlug, allFiles)
-      : o.link;
-  }
-  return result;
 }
 
 function resolveEmbeds(
@@ -126,11 +117,39 @@ function resolveImages(
 
   return result;
 }
+
+// Resolves hrefs for overlays that are NOT embeddable/iframe elements —
+// i.e. plain elements (images, shapes, ...) that merely carry a link, such
+// as one set via Obsidian's Excalidraw "## Element Links" section. These
+// get a lightweight clickable region rather than the rich embed panel.
+function resolveLinkOverlayHrefs(
+  overlays: EmbedOverlay[],
+  currentSlug: FullSlug,
+  allFiles: QuartzPluginData[],
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const o of overlays) {
+    if (o.isEmbeddable) continue;
+    result[o.id] = o.isWikilink
+      ? resolveWikilinkHref(
+          o.link.replace(/^\[\[/, "").replace(/\]\]$/, ""),
+          currentSlug,
+          allFiles,
+        )
+      : o.link;
+  }
+  return result;
+}
+
 function renderOverlay(overlay: EmbedOverlay, linkHrefs: Record<string, string>): unknown {
+  // Plain linked elements (e.g. an image with an element link) — a
+  // transparent, clickable/hoverable region positioned over the already
+  // rendered SVG content. No preview panel, just navigation.
   if (!overlay.isEmbeddable) {
     const href = linkHrefs[overlay.id] ?? overlay.link;
     const isExternal = !overlay.isWikilink;
     return (
+      <a
         href={href}
         class="excalidraw-overlay excalidraw-link-region"
         data-overlay-id={overlay.id}
@@ -144,13 +163,12 @@ function renderOverlay(overlay: EmbedOverlay, linkHrefs: Record<string, string>)
     );
   }
 
-  // existing embeddable/iframe rendering — unchanged from here down
   const label = overlay.link
     .replace(/^\[\[/, "")
     .replace(/\]\]$/, "")
     .replace(/^https?:\/\//, "");
   const truncatedLabel = label.length > 50 ? label.slice(0, 47) + "..." : label;
-  // ...rest of your original function body...
+
   if (overlay.isWikilink) {
     const noteContent = overlay.resolved
       ? `<a href="${overlay.resolved.href}" class="excalidraw-embed-open-link">Open note →</a><div class="excalidraw-embed-body">${overlay.resolved.html}</div>`
@@ -195,6 +213,7 @@ function renderOverlay(overlay: EmbedOverlay, linkHrefs: Record<string, string>)
     </div>
   );
 }
+
 export default ((userOpts?: ExcalidrawPageOptions) => {
   const Component: QuartzComponent = (props: QuartzComponentProps) => {
     const { fileData, allFiles } = props;
@@ -210,6 +229,9 @@ export default ((userOpts?: ExcalidrawPageOptions) => {
       resolvedImages: resolvedImageMap,
     };
     const result = renderToSvg(data, options, renderCtx);
+    const linkHrefs = allFiles
+      ? resolveLinkOverlayHrefs(result.overlays, currentSlug, allFiles)
+      : {};
 
     return (
       <article
