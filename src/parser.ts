@@ -47,7 +47,15 @@ export function parseExcalidrawMd(content: string): ExcalidrawData | null {
   if (Object.keys(embeddedFiles).length > 0) {
     normalized.embeddedFiles = embeddedFiles;
   }
-
+  // NEW: apply links from the Element Links section onto their elements,
+  // without clobbering a link already present in the JSON itself.
+  if (Object.keys(elementLinks).length > 0) {
+    for (const el of normalized.elements) {
+      if (!el.link && elementLinks[el.id]) {
+        el.link = elementLinks[el.id];   // keep "[[Note]]" form to match isWikilink check
+      }
+    }
+  }
   return normalized;
 }
 
@@ -130,6 +138,25 @@ function parseEmbeddedFilesSection(content: string): Record<string, string> {
   const section = endIdx === -1 ? afterSection : afterSection.slice(0, endIdx);
 
   const pattern = /^([a-f0-9]+):\s+\[\[(.+?)\]\]\s*$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(section)) !== null) {
+    result[match[1]!] = match[2]!;
+  }
+
+  return result;
+}
+
+function parseElementLinksSection(content: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const sectionMatch = content.match(/^##?\s+Element\s+Links\s*$/im);
+  if (!sectionMatch) return result;
+  const sectionIdx = sectionMatch.index!;
+
+  const afterSection = content.slice(sectionIdx + sectionMatch[0].length);
+  const endIdx = afterSection.indexOf("%%");
+  const section = endIdx === -1 ? afterSection : afterSection.slice(0, endIdx);
+
+  const pattern = /^([A-Za-z0-9_-]+):\s+\[\[(.+?)\]\]\s*$/gm;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(section)) !== null) {
     result[match[1]!] = match[2]!;
